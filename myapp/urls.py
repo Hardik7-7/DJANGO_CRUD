@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.urls import path,include
-from .views import RegisterView,ProjectAll,ProjectSelf,EmployeeSearch,EmployeeSelfUpdate,EmployeeUpdate,ProjectDelete,ProjectUpdate,ProjectSpecefic,LoginView,EmployeeListAll,EmployeeSelf,ProjectPost,LogoutView,CustomTokenRefreshView
+from .views import RegisterView,ProjectAll,ProjectFilter,EmployeeFilter,ProjectSelf,EmployeeSearch,EmployeeSelfUpdate,EmployeeUpdate,ProjectDelete,ProjectUpdate,ProjectSpecefic,LoginView,EmployeeListAll,EmployeeSelf,ProjectPost,LogoutView,CustomTokenRefreshView
 
 urlpatterns = [
     path('Register/',RegisterView.as_view()),
@@ -20,4 +20,8 @@ urlpatterns = [
     path('project/search/<int:pk>/',ProjectSpecefic.as_view()),
     path('project/update/<int:pk>/',ProjectUpdate.as_view()),
     path('project/delete/<int:pk>/',ProjectDelete.as_view()),
+
+    #
+    path('employee/filter',EmployeeFilter.as_view()),
+    path('project/filter',ProjectFilter.as_view())
 ]

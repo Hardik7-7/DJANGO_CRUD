@@ -1,6 +1,6 @@
 from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
-from .serializers import EmployeeSerializer,LogoutSerializer,LoginSerializer,TokenSerializer,ProjectDetailsSerializer
+from .serializers import EmployeeSerializer,RegisterSerializer,LogoutSerializer,LoginSerializer,TokenSerializer,ProjectDetailsSerializer
 from rest_framework.response import Response
 from rest_framework import status 
 from .models import Employee,ProjectDetails
@@ -11,14 +11,16 @@ from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework.permissions import IsAuthenticated,AllowAny
 from .permissions import IsAdminUser,IsValidAccessToken
 from rest_framework_simplejwt.views import TokenViewBase
-from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from drf_yasg.utils import swagger_auto_schema
 from datetime import date
 from .models import AccessToken
+from drf_yasg import openapi
+
+
 
 class CustomTokenRefreshView(TokenViewBase):
     authentication_classes = []
-    permission_classes=[AllowAny]
+    permission_classes = [AllowAny]
     @swagger_auto_schema(
         operation_description="Renew Your Access Token",
         request_body=LogoutSerializer,
@@ -28,10 +30,19 @@ class CustomTokenRefreshView(TokenViewBase):
         refresh_token = request.data.get('refresh')
         if not refresh_token:
             return Response({'error': 'Refresh token is required'}, status=status.HTTP_400_BAD_REQUEST)  
+        
         try:
             refresh = RefreshToken(refresh_token)
+            user_id = refresh.payload.get('user_id')
+            
+            if not user_id:
+                return Response({'error': 'Invalid token payload'}, status=status.HTTP_401_UNAUTHORIZED)
+
+            user = get_object_or_404(Employee, pk=user_id)
             access_token = str(refresh.access_token)
+            AccessToken.objects.create(token=access_token, user=user)
             return Response({'access': access_token}, status=status.HTTP_200_OK)
+        
         except TokenError:
             return Response({'error': 'Invalid token or expired'}, status=status.HTTP_401_UNAUTHORIZED)
 
@@ -40,21 +51,17 @@ class RegisterView(APIView):
     permission_classes=[AllowAny]
     @swagger_auto_schema(
         operation_description="Register Yourself",
-        request_body=EmployeeSerializer,
+        request_body= RegisterSerializer,
         responses={200: EmployeeSerializer, 400: 'Bad Request'}
     )
     def post(self, request):
-        serializer = EmployeeSerializer(data=request.data)
+        serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
             validated_data = serializer.validated_data
             password = validated_data.pop('password')
-            projects = validated_data.pop('projects', None)
-
             employee = Employee(**validated_data)
             employee.set_password(password)
             employee.save()
-            if projects:
-                employee.projects.set(projects)
             response_data = EmployeeSerializer(employee).data
             response_data.pop('password', None)
             return Response(response_data, status=status.HTTP_201_CREATED)
@@ -235,7 +242,7 @@ class ProjectPost(APIView):
     @swagger_auto_schema(
         operation_description="Post New Projects",
         request_body=ProjectDetailsSerializer,
-        responses={200: TokenSerializer, 400: 'Bad Request'}
+        responses={200: ProjectDetailsSerializer, 400: 'Bad Request'}
     )
     def post(self, request):
         serializer = ProjectDetailsSerializer(data=request.data)
@@ -336,3 +343,72 @@ class ProjectSelf(APIView):
         projects = employee.projects.all()
         serializer = ProjectDetailsSerializer(projects, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+#######
+
+class EmployeeFilter(APIView):
+    permission_classes = [IsAuthenticated,IsValidAccessToken,IsAdminUser]
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter('first_name', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Filter by employee's first name"),
+            openapi.Parameter('last_name', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Filter by employee's last name"),
+            openapi.Parameter('projects', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Filter by project IDs (comma-separated)"),
+        ],
+        responses={200: EmployeeSerializer(many=True)}
+    )
+    def get(self, request):
+        queryset = Employee.objects.all()
+
+        # Apply manual filters
+        first_name = request.GET.get('first_name')
+        last_name = request.GET.get('last_name')
+        projects = request.GET.get('projects')
+
+        if first_name:
+            queryset = queryset.filter(first_name__icontains=first_name)
+        if last_name:
+            queryset = queryset.filter(last_name__icontains=last_name)
+        if projects:
+            try:
+                project_ids = list(map(int, projects.split(',')))
+                if project_ids:
+                    # Filter employees for each project ID
+                    for project_id in project_ids:
+                        queryset = queryset.filter(projects__id=project_id).distinct()
+            except ValueError:
+                return Response({"error": "Invalid project IDs"}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = EmployeeSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+######
+
+class ProjectFilter(APIView):
+    permission_classes = [IsAuthenticated,IsValidAccessToken,IsAdminUser]
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter('name', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Filter by Project names"),
+            openapi.Parameter('employees', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Filter by Employees in the Project (comma-separated)"),
+        ],
+        responses={200: ProjectDetailsSerializer(many=True)}
+    )
+    def get(self, request):
+        queryset = ProjectDetails.objects.all()
+
+        name = request.GET.get('name')
+        employees = request.GET.get('employees')
+
+        if name:
+            queryset = queryset.filter(name__icontains=name)
+        if employees:
+            try:
+                employee_ids = list(map(int, employees.split(',')))
+                if employee_ids:
+                    for employee_id in employee_ids:
+                        queryset = queryset.filter(employees__id=employee_id).distinct()
+            except ValueError:
+                return Response({"error": "Invalid Employee IDs"}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = ProjectDetailsSerializer(queryset, many=True)
+        return Response(serializer.data)

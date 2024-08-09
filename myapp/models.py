@@ -55,8 +55,8 @@ class ProjectDetails(models.Model):
         validators=[no_space_validator]
     )
     description = models.TextField(validators=[description_validator])
-    start_date = models.DateField(default=None)
-    end_date = models.DateField(default=None)
+    start_date = models.DateField(default=None,null=True)
+    end_date = models.DateField(default=None,null=True)
     status = models.CharField(max_length=50,validators=[description_validator])
     estimated_span_in_days = models.IntegerField(default=0)
     employees = models.ManyToManyField(Employee, related_name='projects') 

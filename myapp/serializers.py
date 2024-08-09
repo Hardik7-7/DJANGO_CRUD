@@ -37,6 +37,30 @@ class EmployeeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("This email is already in use.")
         return value
 
+class RegisterSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+   
+    class Meta:
+        model = Employee
+        fields = ['first_name', 'last_name', 'email', 'password', 'date_joined']
+        extra_kwargs = {
+            'date_joined': {'read_only': True}
+        }
+    
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation['date_joined'] = instance.date_joined.strftime('%Y-%m-%d') if instance.date_joined else None
+        return representation
+    
+    def validate_email(self, value):
+        user = self.instance
+        if user and Employee.objects.exclude(pk=user.pk).filter(email=value).exists():
+            raise serializers.ValidationError("This email is already in use.")
+        elif not user and Employee.objects.filter(email=value).exists():
+            raise serializers.ValidationError("This email is already in use.")
+        return value
+
 class ProjectDetailsSerializer(serializers.ModelSerializer):
     employees = serializers.PrimaryKeyRelatedField(queryset=Employee.objects.all(), many=True)
 
@@ -44,7 +68,9 @@ class ProjectDetailsSerializer(serializers.ModelSerializer):
         model = ProjectDetails
         fields = ['name', 'description', 'start_date', 'end_date', 'estimated_span_in_days', 'status', 'employees']
         extra_kwargs = {
-            'estimated_span_in_days': {'read_only': True}
+            'estimated_span_in_days': {'read_only': True},
+            'start_date': {'required': False},
+            'end_date': {'required': False},
         }
 
     def to_representation(self, instance):
